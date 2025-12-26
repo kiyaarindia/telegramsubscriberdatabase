@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Telegram Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <header class="header">
+            <div class="header-left">
+                <h1>Telegram Tracker</h1>
+                <div class="total-count">Total Channels: <span id="totalCount">0</span></div>
+            </div>
+            <div class="header-controls">
+                <button id="openAddChannelModalBtn" class="primary-btn">
+                    <span>+ Add Channels</span>
+                </button>
+
+                <button id="refreshDataBtn" class="secondary-btn" title="Fetch Live Data">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M1 20v-6h6"></path>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                    </svg>
+                    <span>Fetch Live Data</span>
+                </button>
+
+                <button id="exportDataBtn" class="secondary-btn" title="Export Data">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>Export</span>
+                </button>
+
+                <button id="importDataBtn" class="secondary-btn" title="Import Data">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <span>Import</span>
+                </button>
+                <input type="file" id="importFile" accept=".csv" class="hidden">
+
+                <div class="search-container">
+                    <input type="text" id="searchInput" placeholder="Search channels..." class="search-input">
+                </div>
+
+                <select id="sortSelect" class="control-input">
+                    <option value="name-asc">Name (A-Z)</option>
+                    <option value="name-desc">Name (Z-A)</option>
+                    <option value="subs-desc">Subscribers (High-Low)</option>
+                    <option value="subs-asc">Subscribers (Low-High)</option>
+                </select>
+
+                <div class="view-toggle">
+                    <button id="cardViewBtn" class="toggle-btn active" title="Card View">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                    </button>
+                    <button id="tableViewBtn" class="toggle-btn" title="Table View">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="8" y1="6" x2="21" y2="6"></line>
+                            <line x1="8" y1="12" x2="21" y2="12"></line>
+                            <line x1="8" y1="18" x2="21" y2="18"></line>
+                            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                        </svg>
+                    </button>
+                    <div class="column-toggle-wrapper">
+                        <button id="columnToggleBtn" class="toggle-btn" title="Show/Hide Columns">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                        <div id="columnToggleMenu" class="column-toggle-menu hidden">
+                            <div class="column-option"><input type="checkbox" id="col-no" checked disabled> <label
+                                    for="col-no">No.</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-channel" checked disabled> <label
+                                    for="col-channel">Channel</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-status" checked> <label
+                                    for="col-status">Status</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-subs" checked> <label
+                                    for="col-subs">Subscribers</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-username" checked> <label
+                                    for="col-username">Username</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-ownership" checked> <label
+                                    for="col-ownership">Ownership</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-added" checked> <label
+                                    for="col-added">Added On</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-desc"> <label
+                                    for="col-desc">Description</label></div>
+                            <div class="column-option"><input type="checkbox" id="col-action" checked> <label
+                                    for="col-action">Action</label></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="logoutBtn" class="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <!-- Add Channel Modal -->
+        <div id="addChannelModal" class="modal hidden">
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h2>Add Channels</h2>
+                    <button id="closeAddChannelModalBtn" class="close-modal-btn">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">Enter Telegram Channel URLs or Usernames (one per line)</p>
+                    <textarea id="channelInput" placeholder="Example:
+telegram
+https://t.me/durov
+bloomberg" rows="6"></textarea>
+                    <button id="addChannelBtn">Add Channels</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PIN Modal -->
+        <div id="pinModal" class="modal hidden">
+            <div class="modal-content glass-card" style="max-width: 350px;">
+                <div class="modal-header">
+                    <h2>Enter PIN</h2>
+                    <button id="closePinModalBtn" class="close-modal-btn">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">Enter PIN to export data.</p>
+                    <input type="password" id="pinInput" placeholder="Enter 4-digit PIN" maxlength="4"
+                        style="text-align: center; letter-spacing: 4px; font-size: 1.2rem;">
+                    <button id="submitPinBtn" style="margin-top: 1rem;">Verify & Export</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="channelsGrid" class="channels-grid">
+            <!-- Channels will be added here dynamically -->
+        </div>
+
+        <div id="channelsTableContainer" class="channels-table-container hidden">
+            <table class="channels-table">
+                <thead>
+                    <tr>
+                        <th class="col-no">No.</th>
+                        <th class="col-channel">Channel</th>
+                        <th class="col-status">Status</th>
+                        <th class="col-subs">Subscribers</th>
+                        <th class="col-username">Username</th>
+                        <th class="col-ownership">Ownership</th>
+                        <th class="col-added">Added On</th>
+                        <th class="col-desc hidden">Description</th>
+                        <th class="col-action">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="channelsTableBody">
+                    <!-- Table rows will be added here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div id="toast" class="toast"></div>
+    <script src="app.js?v=3"></script>
+</body>
+
+</html>
