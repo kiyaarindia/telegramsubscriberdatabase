@@ -43,7 +43,8 @@ const clearAnalyticsBtn = document.getElementById('clearAnalyticsBtn');
 
 // --- State ---
 let channels = []; // This will be populated from the database
-let analyticsHistory = [];
+let analyticsHistory = JSON.parse(localStorage.getItem('analytics_history')) || [];
+let lastAnalyticsUpdate = parseInt(localStorage.getItem('last_analytics_update') || '0');
 let viewMode = localStorage.getItem('viewMode') || 'table';
 let sortBy = localStorage.getItem('sortBy') || 'name-asc';
 let searchQuery = '';
@@ -169,24 +170,6 @@ if (window.location.pathname.includes('dashboard.html')) {
     }
 
     // --- Core Data Functions (Database-driven) ---
-
-    async function loadAnalytics() {
-        console.log('Loading analytics from database...');
-        try {
-            const res = await fetch(`${API_URL}/analytics`);
-            const result = await res.json();
-            if (result.success) {
-                analyticsHistory = result.data;
-                if (viewAnalytics && !viewAnalytics.classList.contains('hidden')) {
-                    renderAnalytics();
-                }
-            } else {
-                console.error('Failed to load analytics:', result.message);
-            }
-        } catch (error) {
-            console.error('Network error loading analytics:', error);
-        }
-    }
 
     async function loadChannels() {
         console.log('Loading channels from database...');
@@ -334,53 +317,36 @@ if (window.location.pathname.includes('dashboard.html')) {
         addChannelBtn.disabled = false;
     });
 
-    // Refresh Data (with Client-Side Chunking)
+    // Refresh Data (force update all)
     refreshDataBtn.addEventListener('click', async () => {
         if (channels.length === 0) return showToast('No channels to refresh', 'error');
 
         refreshDataBtn.classList.add('loading');
         refreshDataBtn.disabled = true;
-        const btnText = refreshDataBtn.querySelector('span');
-        const originalText = 'Fetch';
+        refreshDataBtn.querySelector('span').textContent = 'Refreshing...';
 
-        const BATCH_SIZE = 5; // Small batch to prevent timeouts
-        let totalUpdated = 0;
-        let totalFailed = 0;
+        let updatedCount = 0, errorCount = 0;
 
-        try {
-            for (let i = 0; i < channels.length; i += BATCH_SIZE) {
-                const batch = channels.slice(i, i + BATCH_SIZE);
-                const currentCount = Math.min(i + BATCH_SIZE, channels.length);
-
-                // Update UI
-                btnText.textContent = `Syncing ${currentCount}/${channels.length}...`;
-
-                // Send Batch
-                const res = await fetch(`${API_URL}/channels/sync`, {
+        for (const channel of channels) {
+            try {
+                const res = await fetch(`${API_URL}/channel`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ channels: batch })
+                    body: JSON.stringify({ channelIdentifier: channel.username })
                 });
-
-                const result = await res.json();
-                if (result.success && result.stats) {
-                    totalUpdated += result.stats.updated;
-                    totalFailed += result.stats.failed;
-                }
+                if ((await res.json()).success) updatedCount++;
+                else errorCount++;
+            } catch (err) {
+                errorCount++;
             }
-
-            // Completed
-            showToast(`Sync Complete! Updated: ${totalUpdated}, Failed: ${totalFailed}`);
-            await loadChannels(); // Reload data to show changes
-
-        } catch (err) {
-            console.error(err);
-            showToast('Network error during sync (Check console)', 'error');
-        } finally {
-            refreshDataBtn.classList.remove('loading');
-            refreshDataBtn.disabled = false;
-            btnText.textContent = originalText;
         }
+
+        showToast(`Refresh complete: ${updatedCount} success, ${errorCount} failed.`);
+        await loadChannels(); // Reload all data from server
+
+        refreshDataBtn.classList.remove('loading');
+        refreshDataBtn.disabled = false;
+        refreshDataBtn.querySelector('span').textContent = 'Fetch';
     });
 
 
@@ -539,154 +505,10 @@ if (window.location.pathname.includes('dashboard.html')) {
         }).join('');
     }
 
-    function renderAnalytics() {
-        if (!analyticsTableBody) return;
-        const matrixHeader = document.getElementById('analyticsTableHeader');
-        const matrixBody = document.getElementById('analyticsTableBody');
-
-        matrixHeader.innerHTML = '';
-        matrixBody.innerHTML = '';
-
-        if (analyticsHistory.length === 0) {
-            matrixBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 1rem;">No history recorded yet.</td></tr>';
-            if (analyticsCountEl) analyticsCountEl.textContent = '0';
-            if (document.getElementById('analyticsChannelCount')) document.getElementById('analyticsChannelCount').textContent = '0';
-            return;
-        }
-
-        if (analyticsCountEl) analyticsCountEl.textContent = analyticsHistory.length;
-
-        // 1. Identify all unique channels (Union of all snapshots)
-        const channelMap = new Map(); // username -> Name
-        analyticsHistory.forEach(record => {
-            if (Array.isArray(record.details)) {
-                record.details.forEach(c => {
-                    if (c.username && !channelMap.has(c.username)) {
-                        channelMap.set(c.username, c.name);
-                    }
-                });
-            }
-        });
-
-        // Update total channel count
-        if (document.getElementById('analyticsChannelCount')) {
-            document.getElementById('analyticsChannelCount').textContent = channelMap.size;
-        }
-
-        // Sort channel keys for consistent column order (e.g., by Name)
-        const sortedChannelKeys = Array.from(channelMap.keys()).sort((a, b) => {
-            return channelMap.get(a).localeCompare(channelMap.get(b));
-        });
-
-        // 2. Build Header Row
-        // Static columns: Date, Day, Time
-        let headerHTML = `
-            <tr>
-                <th style="min-width: 120px; position: sticky; left: 0; z-index: 10; background: var(--glass-bg);">Date</th>
-                <th style="min-width: 100px;">Day</th>
-                <th style="min-width: 100px;">Time</th>
-        `;
-
-        sortedChannelKeys.forEach(username => {
-            const name = channelMap.get(username);
-            // Header cell for each channel
-            // We can add a link or tooltip if needed
-            headerHTML += `<th style="min-width: 150px; text-align: center;" title="@${username}">
-                <div style="font-size: 0.9rem; line-height: 1.2;">${name}</div>
-                <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.8;">@${username}</div>
-            </th>`;
-        });
-        headerHTML += '</tr>';
-        matrixHeader.innerHTML = headerHTML;
-
-        // 3. Build Data Rows
-        analyticsHistory.forEach(record => {
-            const dateObj = new Date(record.timestamp);
-            const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); // 26-Dec-2025
-            const dayStr = dateObj.toLocaleDateString('en-US', { weekday: 'long' }); // Friday
-            const timeStr = dateObj.toLocaleTimeString('en-US', { hour12: false }); // 20:00:25
-
-            // Create a quick lookup for this snapshot
-            const snapshotData = {};
-            if (Array.isArray(record.details)) {
-                record.details.forEach(c => {
-                    // Use username as key for consistency
-                    if (c.username) {
-                        snapshotData[c.username] = c.subscribers;
-                    }
-                });
-            }
-
-            let rowHTML = `
-                <tr>
-                    <td style="position: sticky; left: 0; background: inherit; z-index: 5; font-weight: 500;">${dateStr}</td>
-                    <td>${dayStr}</td>
-                    <td>${timeStr}</td>
-            `;
-
-            sortedChannelKeys.forEach(username => {
-                const rawSubs = snapshotData[username];
-                // Check if we have data for this channel in this snapshot
-                let cellContent = '-';
-                if (rawSubs !== undefined) {
-                    // Start: Cell Diff calculation (Optional enhancement for later, just showing value now as per req)
-                    // We can match exact format from Google Sheet (Active Value)
-                    // If rawSubs is a string like "2.1k subscribers", parse it for display or just show raw? 
-                    // User's sheet shows integers. Let's parse it to int for cleaner look.
-                    const val = parseSubscribers(rawSubs);
-                    cellContent = val.toLocaleString();
-                }
-                rowHTML += `<td style="text-align: center;">${cellContent}</td>`;
-            });
-
-            rowHTML += '</tr>';
-            matrixBody.innerHTML += rowHTML;
-        });
-    }
-
-    // Connect Analytics Buttons
-    if (forceRecordBtn) {
-        forceRecordBtn.addEventListener('click', async () => {
-            if (!confirm('Have you "Fetched" the latest data first?\n\nClick OK to record snapshot of CURRENT database state.')) return;
-            try {
-                const res = await fetch(`${API_URL}/analytics`, { method: 'POST' });
-                const result = await res.json();
-                if (result.success) {
-                    showToast('Snapshot recorded.');
-                    loadAnalytics();
-                } else {
-                    showToast('Failed to record snapshot.', 'error');
-                }
-            } catch (err) {
-                showToast('Network error recording snapshot.', 'error');
-            }
-        });
-    }
-
-    if (clearAnalyticsBtn) {
-        clearAnalyticsBtn.addEventListener('click', async () => {
-            if (!confirm('Clear ALL analytics history? This cannot be undone.')) return;
-            try {
-                const res = await fetch(`${API_URL}/analytics`, { method: 'DELETE' });
-                const result = await res.json();
-                if (result.success) {
-                    showToast('History cleared.');
-                    analyticsHistory = [];
-                    renderAnalytics();
-                } else {
-                    showToast('Failed to clear history.', 'error');
-                }
-            } catch (err) {
-                showToast('Network error clearing history.', 'error');
-            }
-        });
-    }
-
     // --- Initial Load ---
     const lastView = localStorage.getItem('lastView') || 'dashboard';
     updateViewMode(); // Set initial view display
     loadChannels().then(() => {
-        loadAnalytics(); // Load analytics as well
         // Switch to the last viewed tab after data is loaded
         switchView(lastView);
     });
