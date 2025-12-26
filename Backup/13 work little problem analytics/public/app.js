@@ -334,53 +334,36 @@ if (window.location.pathname.includes('dashboard.html')) {
         addChannelBtn.disabled = false;
     });
 
-    // Refresh Data (with Client-Side Chunking)
+    // Refresh Data (force update all)
     refreshDataBtn.addEventListener('click', async () => {
         if (channels.length === 0) return showToast('No channels to refresh', 'error');
 
         refreshDataBtn.classList.add('loading');
         refreshDataBtn.disabled = true;
-        const btnText = refreshDataBtn.querySelector('span');
-        const originalText = 'Fetch';
+        refreshDataBtn.querySelector('span').textContent = 'Refreshing...';
 
-        const BATCH_SIZE = 5; // Small batch to prevent timeouts
-        let totalUpdated = 0;
-        let totalFailed = 0;
+        let updatedCount = 0, errorCount = 0;
 
-        try {
-            for (let i = 0; i < channels.length; i += BATCH_SIZE) {
-                const batch = channels.slice(i, i + BATCH_SIZE);
-                const currentCount = Math.min(i + BATCH_SIZE, channels.length);
-
-                // Update UI
-                btnText.textContent = `Syncing ${currentCount}/${channels.length}...`;
-
-                // Send Batch
-                const res = await fetch(`${API_URL}/channels/sync`, {
+        for (const channel of channels) {
+            try {
+                const res = await fetch(`${API_URL}/channel`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ channels: batch })
+                    body: JSON.stringify({ channelIdentifier: channel.username })
                 });
-
-                const result = await res.json();
-                if (result.success && result.stats) {
-                    totalUpdated += result.stats.updated;
-                    totalFailed += result.stats.failed;
-                }
+                if ((await res.json()).success) updatedCount++;
+                else errorCount++;
+            } catch (err) {
+                errorCount++;
             }
-
-            // Completed
-            showToast(`Sync Complete! Updated: ${totalUpdated}, Failed: ${totalFailed}`);
-            await loadChannels(); // Reload data to show changes
-
-        } catch (err) {
-            console.error(err);
-            showToast('Network error during sync (Check console)', 'error');
-        } finally {
-            refreshDataBtn.classList.remove('loading');
-            refreshDataBtn.disabled = false;
-            btnText.textContent = originalText;
         }
+
+        showToast(`Refresh complete: ${updatedCount} success, ${errorCount} failed.`);
+        await loadChannels(); // Reload all data from server
+
+        refreshDataBtn.classList.remove('loading');
+        refreshDataBtn.disabled = false;
+        refreshDataBtn.querySelector('span').textContent = 'Fetch';
     });
 
 
