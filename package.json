@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "dev": "node --watch server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -11,10 +12,15 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@supabase/supabase-js": "^2.43.4",
     "axios": "^1.13.2",
     "body-parser": "^2.2.1",
     "cheerio": "^1.1.2",
+    "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "@supabase/supabase-js": "^2.43.4"
+    "pg": "^8.19.0"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.37.5"
   }
 }

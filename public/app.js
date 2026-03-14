@@ -5,21 +5,161 @@ const loginForm = document.getElementById('loginForm');
 const loginBtn = document.getElementById('loginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 
-// Modal Elements
 const openAddChannelModalBtn = document.getElementById('openAddChannelModalBtn');
 const closeAddChannelModalBtn = document.getElementById('closeAddChannelModalBtn');
 const addChannelModal = document.getElementById('addChannelModal');
 const addChannelBtn = document.getElementById('addChannelBtn');
+const editChannelModal = document.getElementById('editChannelModal');
+const closeEditChannelModalBtn = document.getElementById('closeEditChannelModalBtn');
+const saveEditChannelBtn = document.getElementById('saveEditChannelBtn');
 const refreshDataBtn = document.getElementById('refreshDataBtn');
+const refreshIntervalSelect = document.getElementById('refreshIntervalSelect');
 const pinModal = null; // Removed
 const channelInput = document.getElementById('channelInput');
+const clearAllChannelsBtn = document.getElementById('clearAllChannelsBtn');
+
+// Observer for live fetching
+const visibleElements = new Set();
+const liveUpdateObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        const el = entry.target;
+        const username = el.dataset.username;
+        if (!username) return;
+
+        if (entry.isIntersecting) {
+            visibleElements.add(el);
+            const refreshInterval = parseInt(localStorage.getItem('refreshInterval')) || 60000;
+            if (!el.dataset.liveFetched || (Date.now() - parseInt(el.dataset.lastFetchTime || 0)) > refreshInterval) {
+                el.dataset.liveFetched = 'true';
+                el.dataset.lastFetchTime = Date.now().toString();
+                fetchLiveSubscribers(username, el);
+            }
+        } else {
+            visibleElements.delete(el);
+        }
+    });
+}, { rootMargin: '100px' });
+
+let liveUpdateIntervalId = null;
+
+function startLiveUpdateInterval() {
+    if (liveUpdateIntervalId) clearInterval(liveUpdateIntervalId);
+
+    let interval = parseInt(localStorage.getItem('refreshInterval')) || 60000;
+
+    if (refreshIntervalSelect) {
+        refreshIntervalSelect.value = interval.toString();
+
+        // Remove old listener to avoid duplicates
+        const newSelect = refreshIntervalSelect.cloneNode(true);
+        if (refreshIntervalSelect.parentNode) {
+            refreshIntervalSelect.parentNode.replaceChild(newSelect, refreshIntervalSelect);
+        }
+
+        newSelect.addEventListener('change', (e) => {
+            const newInterval = parseInt(e.target.value);
+            localStorage.setItem('refreshInterval', newInterval);
+            startLiveUpdateInterval();
+        });
+    }
+
+    // Tracker countdown timer logic
+    let nextFetchTime = Date.now() + interval;
+    if (window.countdownIntervalId) clearInterval(window.countdownIntervalId);
+
+    window.countdownIntervalId = setInterval(() => {
+        if (!countdownTimerEl) return;
+        const remainingMs = Math.max(0, nextFetchTime - Date.now());
+        const totalSeconds = Math.floor(remainingMs / 1000);
+
+        if (totalSeconds <= 0) {
+            countdownTimerEl.textContent = "00:00";
+            // TRIGGER ACTUAL SYNC
+            if (refreshDataBtn && !refreshDataBtn.disabled) {
+                console.log('[AUTO] Triggering auto-refresh fetch...');
+                refreshDataBtn.click();
+            }
+            nextFetchTime = Date.now() + interval; // Reset countdown after click
+            return;
+        }
+
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        if (hours > 0) {
+            countdownTimerEl.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        } else {
+            countdownTimerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+    }, 1000);
+}
+
+// Start auto-fetch loop
+startLiveUpdateInterval();
+
+async function fetchLiveSubscribers(username, element) {
+    try {
+        const res = await fetch(`${API_URL}/channel/${username}/live`);
+        const result = await res.json();
+        if (result.success && result.data) {
+            const data = result.data;
+            const ch = channels.find(c => c.username === username);
+            if (ch) {
+                if (data.subscribers !== undefined) ch.subscribers = data.subscribers;
+                if (data.status) ch.status = data.status;
+                if (data.avatar_url) ch.avatar_url = data.avatar_url;
+                if (data.name) ch.name = data.name;
+                updateUIForChannel(element, ch);
+            }
+        }
+    } catch (err) {
+        console.error(`Live fetch error for ${username}:`, err);
+    }
+}
+
+function updateUIForChannel(element, channel) {
+    if (element.classList.contains('channel-card')) {
+        const subsCell = element.querySelector('.channel-subs');
+        const img = element.querySelector('.channel-img');
+        const nameCell = element.querySelector('.channel-name');
+
+        if (subsCell && channel.subscribers) {
+            subsCell.textContent = `${parseSubscribers(channel.subscribers).toLocaleString()} subscribers`;
+            subsCell.style.color = 'var(--success-color)';
+        }
+        if (img && channel.avatar_url) img.src = channel.avatar_url;
+        if (nameCell && channel.name) {
+            nameCell.innerHTML = `${channel.name} ${channel.status === 'Inactive' ? '<span class="status-badge status-inactive">Inactive</span>' : ''}`;
+        }
+        element.style.opacity = channel.status === 'Inactive' ? '0.6' : '1';
+    } else if (element.tagName === 'TR') {
+        const subsCell = element.querySelector('.col-subs');
+        const img = element.querySelector('.table-channel-img');
+        const nameCellSpan = element.querySelector('.col-channel span');
+        const statusCell = element.querySelector('.col-status');
+
+        if (subsCell && channel.subscribers) {
+            subsCell.textContent = parseSubscribers(channel.subscribers).toLocaleString();
+            subsCell.style.color = 'var(--success-color)';
+        }
+        if (img && channel.avatar_url) img.src = channel.avatar_url;
+        if (nameCellSpan && channel.name) nameCellSpan.textContent = channel.name;
+        if (statusCell) {
+            statusCell.innerHTML = `<span class="status-badge ${channel.status === 'Active' ? 'status-active' : 'status-inactive'}">${channel.status || 'Active'}</span>`;
+        }
+        element.style.opacity = channel.status === 'Inactive' ? '0.8' : '1';
+    }
+}
 
 const channelsGrid = document.getElementById('channelsGrid');
 const channelsTableContainer = document.getElementById('channelsTableContainer');
 const channelsTableBody = document.getElementById('channelsTableBody');
 const toastEl = document.getElementById('toast');
 const totalCountEl = document.getElementById('totalCount');
-const sortSelect = document.getElementById('sortSelect');
+const activeCountEl = document.getElementById('activeCount');
+const inactiveCountEl = document.getElementById('inactiveCount');
+const countdownTimerEl = document.getElementById('countdownTimer');
 const searchInput = document.getElementById('searchInput');
 const cardViewBtn = document.getElementById('cardViewBtn');
 const tableViewBtn = document.getElementById('tableViewBtn');
@@ -29,11 +169,22 @@ const columnToggleMenu = document.getElementById('columnToggleMenu');
 // Navigation Elements
 const navDashboard = document.getElementById('navDashboard');
 const navDatabase = document.getElementById('navDatabase');
-const navAnalytics = document.getElementById('navAnalytics');
+const navAutoSave = document.getElementById('navAutoSave');
+
 const viewDashboard = document.getElementById('viewDashboard');
 const viewDatabase = document.getElementById('viewDatabase');
-const viewAnalytics = document.getElementById('viewAnalytics');
+const viewAutoSave = document.getElementById('viewAutoSave');
 const overviewTableBody = document.getElementById('overviewTableBody');
+
+// Auto Tracker Elements
+const toggleAutoSaveBtn = document.getElementById('toggleAutoSaveBtn');
+const autoSaveIntervalSelect = document.getElementById('autoSaveInterval');
+const autoSaveStatus = document.getElementById('autoSaveStatus');
+const trackerSearchInput = document.getElementById('trackerSearchInput');
+let isAutoSaving = false;
+let autoSaveIntervalId = null;
+let autoSaveCountdownId = null;
+let nextAutoSaveTime = 0;
 
 // Analytics Elements (Still using localStorage as per original design)
 const analyticsTableBody = document.getElementById('analyticsTableBody');
@@ -45,28 +196,48 @@ const clearAnalyticsBtn = document.getElementById('clearAnalyticsBtn');
 let channels = []; // This will be populated from the database
 let analyticsHistory = [];
 let viewMode = localStorage.getItem('viewMode') || 'table';
-let sortBy = localStorage.getItem('sortBy') || 'name-asc';
+let sortBy = localStorage.getItem('sortBy') || 'subs';
+let sortDesc = localStorage.getItem('sortDesc') === 'true'; // Default true for subs
 let searchQuery = '';
 
 // --- Column Configuration (Kept in localStorage for user preference) ---
 const defaultColumnOrder = [
     'col-no', 'col-channel', 'col-subs', 'col-username',
-    'col-ownership', 'col-status', 'col-added', 'col-desc', 'col-action'
+    'col-ownership', 'col-status', 'col-added', 'col-synced', 'col-desc', 'col-action', 'col-delete'
 ];
-let columnOrder = JSON.parse(localStorage.getItem('columnOrder')) || defaultColumnOrder;
+let columnOrder = JSON.parse(localStorage.getItem('columnOrder'));
+if (!columnOrder) {
+    columnOrder = defaultColumnOrder;
+} else {
+    // Hard fix: Ensure col-synced is present
+    if (columnOrder.indexOf('col-synced') === -1) {
+        const addedIdx = columnOrder.indexOf('col-added');
+        if (addedIdx !== -1) {
+            columnOrder.splice(addedIdx + 1, 0, 'col-synced');
+        } else {
+            columnOrder.push('col-synced');
+        }
+    }
+}
+localStorage.setItem('columnOrder', JSON.stringify(columnOrder));
 const columnLabels = {
     'col-no': 'No.', 'col-channel': 'Channel', 'col-status': 'Status', 'col-subs': 'Subscribers',
-    'col-username': 'Username', 'col-ownership': 'Ownership', 'col-added': 'Added On',
-    'col-desc': 'Description', 'col-action': 'Action'
+    'col-username': 'Username', 'col-ownership': 'Ownership', 'col-added': 'Added On', 'col-synced': 'Last Sync',
+    'col-desc': 'Description', 'col-action': 'Edit', 'col-delete': 'Delete'
 };
 let visibleColumns = {
     'col-no': true, 'col-channel': true, 'col-status': true, 'col-subs': true, 'col-username': true,
-    'col-ownership': true, 'col-added': true, 'col-desc': false, 'col-action': true
+    'col-ownership': true, 'col-added': true, 'col-synced': true, 'col-desc': false, 'col-action': true, 'col-delete': true
 };
 const savedColumns = JSON.parse(localStorage.getItem('visibleColumns'));
 if (savedColumns) {
     visibleColumns = { ...visibleColumns, ...savedColumns };
 }
+// Force col-synced to true if it was missing 
+if (visibleColumns['col-synced'] === undefined) {
+    visibleColumns['col-synced'] = true;
+}
+localStorage.setItem('visibleColumns', JSON.stringify(visibleColumns));
 
 
 // --- Helper Functions ---
@@ -92,19 +263,37 @@ function sortChannels(channelsList) {
 
     return [...channelsList].sort((a, b) => {
         const ownershipOrder = { 'Our Channel': 1, 'Our Relative Channel': 2, 'Competitor Channel': 3 };
+
         const ownerA = ownershipOrder[a.ownership || 'Competitor Channel'];
         const ownerB = ownershipOrder[b.ownership || 'Competitor Channel'];
-        if (ownerA !== ownerB) return ownerA - ownerB;
 
-        if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
-        if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
-        if (sortBy === 'subs-asc') return parseSubscribers(a.subscribers) - parseSubscribers(b.subscribers);
-        if (sortBy === 'subs-desc') return parseSubscribers(b.subscribers) - parseSubscribers(a.subscribers);
-        if (sortBy === 'status') {
-            if (a.status === b.status) return 0;
-            return a.status === 'Active' ? -1 : 1;
+        // Priority 1: Always sort by Ownership first
+        if (ownerA !== ownerB) {
+            return ownerA - ownerB;
         }
-        return 0;
+
+        // Priority 2: Sort by the user's selected column *within* those ownership groups
+        let comparison = 0;
+        if (sortBy === 'col-no') {
+            comparison = a.rank - b.rank;
+        } else if (sortBy === 'col-channel' || sortBy === 'col-username') {
+            comparison = a.name.localeCompare(b.name);
+        } else if (sortBy === 'col-subs') {
+            comparison = parseSubscribers(a.subscribers) - parseSubscribers(b.subscribers);
+        } else if (sortBy === 'col-status') {
+            const statusA = a.status || 'Active';
+            const statusB = b.status || 'Active';
+            if (statusA !== statusB) comparison = statusA === 'Active' ? -1 : 1;
+        } else if (sortBy === 'col-added') {
+            const dateA = new Date(a.added_on || a.created_at).getTime() || 0;
+            const dateB = new Date(b.added_on || b.created_at).getTime() || 0;
+            comparison = dateA - dateB;
+        } else if (sortBy === 'col-ownership') {
+            // If they clicked the ownership column itself, just sort by ownership desc/asc
+            comparison = ownerA - ownerB;
+        }
+
+        return sortDesc ? -comparison : comparison;
     }).map(c => ({ ...c, rank: rankMap[c.username] }));
 }
 
@@ -116,6 +305,18 @@ function formatDate(dateString) {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
     return `${day}-${month}-${year}`;
+}
+
+function formatDateTime(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    const hours = String(date.getHours()).padStart(2, '0');
+    const mins = String(date.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${mins}`;
 }
 
 function showToast(message, type = 'success') {
@@ -177,8 +378,8 @@ if (window.location.pathname.includes('dashboard.html')) {
             const result = await res.json();
             if (result.success) {
                 analyticsHistory = result.data;
-                if (viewAnalytics && !viewAnalytics.classList.contains('hidden')) {
-                    renderAnalytics();
+                if (viewAutoSave && !viewAutoSave.classList.contains('hidden')) {
+                    renderTrackerTable();
                 }
             } else {
                 console.error('Failed to load analytics:', result.message);
@@ -205,7 +406,11 @@ if (window.location.pathname.includes('dashboard.html')) {
         }
     }
 
-    window.removeChannel = async (username) => {
+    window.removeChannel = async (e, username) => {
+        if (e && e.stopPropagation) {
+            e.stopPropagation(); // Prevent card click from opening Telegram
+        }
+
         if (!confirm(`Are you sure you want to remove @${username}?`)) return;
 
         try {
@@ -244,15 +449,83 @@ if (window.location.pathname.includes('dashboard.html')) {
         }
     };
 
+    window.openEditModal = (username) => {
+        const channel = channels.find(c => c.username === username);
+        if (!channel) return;
+
+        document.getElementById('editChannelOriginalUsername').value = channel.username;
+        document.getElementById('editChannelUsername').value = channel.username; // The visible input
+        document.getElementById('editChannelName').value = channel.name || '';
+
+        editChannelModal.classList.remove('hidden');
+    };
+
+    saveEditChannelBtn.addEventListener('click', async () => {
+        const originalUsername = document.getElementById('editChannelOriginalUsername').value;
+        const newUsernameInput = document.getElementById('editChannelUsername').value.trim();
+        const name = document.getElementById('editChannelName').value.trim();
+
+        if (!originalUsername) return showToast('Error identifying channel.', 'error');
+        if (!newUsernameInput) return showToast('Telegram ID cannot be empty.', 'error');
+
+        // Remove @ if user added it
+        const cleanNewUsername = newUsernameInput.replace('@', '');
+
+        saveEditChannelBtn.textContent = 'Saving...';
+        saveEditChannelBtn.disabled = true;
+
+        try {
+            const res = await fetch(`${API_URL}/channels/${originalUsername}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    newUsername: cleanNewUsername !== originalUsername ? cleanNewUsername : undefined,
+                    name: name || undefined
+                })
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                showToast(`Details updated.`);
+
+                // Update local state
+                const channelIndex = channels.findIndex(c => c.username === originalUsername);
+                if (channelIndex !== -1) {
+                    if (result.newUsername) channels[channelIndex].username = result.newUsername;
+                    if (name !== undefined) channels[channelIndex].name = name;
+                }
+
+                editChannelModal.classList.add('hidden');
+                renderChannels();
+            } else {
+                if (result.isDuplicate) {
+                    showToast(result.message, 'error');
+                } else {
+                    showToast(result.message || 'Failed to update channel details.', 'error');
+                }
+            }
+        } catch (error) {
+            showToast('Network error while updating channel.', 'error');
+        } finally {
+            saveEditChannelBtn.textContent = 'Save Changes';
+            saveEditChannelBtn.disabled = false;
+        }
+    });
+
     // --- UI Event Listeners ---
 
     // Navigation
     function switchView(viewName) {
-        [viewDashboard, viewDatabase, viewAnalytics].forEach(v => v.classList.add('hidden'));
-        [navDashboard, navDatabase, navAnalytics].forEach(n => n.classList.remove('active'));
+        // Safely hide all views and deactivate nav items
+        [viewDashboard, viewDatabase, viewAutoSave].forEach(v => {
+            if (v) v.classList.add('hidden');
+        });
+        [navDashboard, navDatabase, navAutoSave].forEach(n => {
+            if (n) n.classList.remove('active');
+        });
 
-        const viewMap = { dashboard: viewDashboard, database: viewDatabase, analytics: viewAnalytics };
-        const navMap = { dashboard: navDashboard, database: navDatabase, analytics: navAnalytics };
+        const viewMap = { dashboard: viewDashboard, database: viewDatabase, autosave: viewAutoSave };
+        const navMap = { dashboard: navDashboard, database: navDatabase, autosave: navAutoSave };
 
         if (viewMap[viewName]) viewMap[viewName].classList.remove('hidden');
         if (navMap[viewName]) navMap[viewName].classList.add('active');
@@ -260,13 +533,13 @@ if (window.location.pathname.includes('dashboard.html')) {
         // Render content for the activated view
         if (viewName === 'dashboard') renderOverview();
         if (viewName === 'database') renderChannels();
-        if (viewName === 'analytics') renderAnalytics();
+        if (viewName === 'autosave') renderTrackerTable();
 
         localStorage.setItem('lastView', viewName);
     }
 
-    [navDashboard, navDatabase, navAnalytics].forEach(nav => {
-        nav.addEventListener('click', () => switchView(nav.id.replace('nav', '').toLowerCase()));
+    [navDashboard, navDatabase, navAutoSave].forEach(nav => {
+        if (nav) nav.addEventListener('click', () => switchView(nav.id.replace('nav', '').toLowerCase()));
     });
 
     logoutBtn.addEventListener('click', () => {
@@ -278,6 +551,9 @@ if (window.location.pathname.includes('dashboard.html')) {
     openAddChannelModalBtn.addEventListener('click', () => addChannelModal.classList.remove('hidden'));
     closeAddChannelModalBtn.addEventListener('click', () => addChannelModal.classList.add('hidden'));
     addChannelModal.addEventListener('click', (e) => { if (e.target === addChannelModal) addChannelModal.classList.add('hidden'); });
+
+    closeEditChannelModalBtn.addEventListener('click', () => editChannelModal.classList.add('hidden'));
+    editChannelModal.addEventListener('click', (e) => { if (e.target === editChannelModal) editChannelModal.classList.add('hidden'); });
 
 
     // Add Channel Button
@@ -372,6 +648,7 @@ if (window.location.pathname.includes('dashboard.html')) {
             // Completed
             showToast(`Sync Complete! Updated: ${totalUpdated}, Failed: ${totalFailed}`);
             await loadChannels(); // Reload data to show changes
+            await loadAnalytics(); // Refresh history as well
 
         } catch (err) {
             console.error(err);
@@ -382,6 +659,42 @@ if (window.location.pathname.includes('dashboard.html')) {
             btnText.textContent = originalText;
         }
     });
+
+    // Clear All Channels
+    if (clearAllChannelsBtn) {
+        clearAllChannelsBtn.addEventListener('click', async () => {
+            if (channels.length === 0) return showToast('No channels to remove.', 'error');
+
+            if (!confirm(`WARNING: Are you sure you want to remove ALL ${channels.length} channels? This cannot be undone.`)) return;
+
+            clearAllChannelsBtn.disabled = true;
+            clearAllChannelsBtn.textContent = 'Clearing...';
+
+            try {
+                const res = await fetch(`${API_URL}/channels`, { method: 'DELETE' });
+                const result = await res.json();
+                if (result.success) {
+                    showToast('All channels removed successfully.');
+                    await loadChannels(); // Refresh UI
+                } else {
+                    showToast(result.message || 'Failed to clear database.', 'error');
+                }
+            } catch (err) {
+                showToast('Network error while clearing database.', 'error');
+            } finally {
+                clearAllChannelsBtn.disabled = false;
+                clearAllChannelsBtn.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    <span>Clear All</span>`;
+            }
+        });
+    }
 
 
     // Controls (Sort, Search, View)
@@ -402,13 +715,6 @@ if (window.location.pathname.includes('dashboard.html')) {
     }
     cardViewBtn.addEventListener('click', () => { viewMode = 'card'; updateViewMode(); });
     tableViewBtn.addEventListener('click', () => { viewMode = 'table'; updateViewMode(); });
-
-    sortSelect.value = sortBy;
-    sortSelect.addEventListener('change', (e) => {
-        sortBy = e.target.value;
-        localStorage.setItem('sortBy', sortBy);
-        renderChannels();
-    });
 
     searchInput.addEventListener('input', (e) => {
         searchQuery = e.target.value.toLowerCase();
@@ -449,7 +755,13 @@ if (window.location.pathname.includes('dashboard.html')) {
             ? channels.filter(c => c.name.toLowerCase().includes(searchQuery) || c.username.toLowerCase().includes(searchQuery))
             : channels;
 
-        totalCountEl.textContent = filteredChannels.length;
+        if (totalCountEl) totalCountEl.textContent = filteredChannels.length;
+
+        const activeChannels = filteredChannels.filter(c => c.status !== 'Inactive');
+        const inactiveChannels = filteredChannels.filter(c => c.status === 'Inactive');
+
+        if (activeCountEl) activeCountEl.textContent = activeChannels.length;
+        if (inactiveCountEl) inactiveCountEl.textContent = inactiveChannels.length;
 
         const sortedChannels = sortChannels(filteredChannels);
 
@@ -458,38 +770,65 @@ if (window.location.pathname.includes('dashboard.html')) {
         sortedChannels.forEach(channel => {
             const card = document.createElement('div');
             card.className = 'channel-card';
+            card.dataset.username = channel.username; // For live fetch tracking
             if (channel.ownership === 'Our Channel') card.style.borderColor = 'var(--success-color)';
             else if (channel.ownership === 'Our Relative Channel') card.style.borderColor = 'var(--accent-color)';
             if (channel.status === 'Inactive') card.style.opacity = '0.6';
 
-            card.onclick = (e) => { if (!e.target.matches('button, select')) window.open(`https://t.me/${channel.username}`, '_blank'); };
+            const imageUrl = channel.avatar_url || channel.image_url;
+            const finalImgSrc = imageUrl ? (imageUrl.startsWith('data:') ? imageUrl : `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`) : 'https://via.placeholder.com/64';
             card.innerHTML = `
-                <img src="${channel.avatar_url || channel.image_url || 'https://via.placeholder.com/64'}" alt="${channel.name}" class="channel-img">
+                <img src="${finalImgSrc}" alt="${channel.name}" class="channel-img">
                 <div class="channel-info">
                     <div class="channel-name">${channel.name} ${channel.status === 'Inactive' ? '<span class="status-badge status-inactive">Inactive</span>' : ''}</div>
-                    <div class="channel-username">@${channel.username}</div>
+                    <div class="channel-username" style="cursor:pointer; color:var(--accent-color);" onclick="window.open('https://t.me/${channel.username}', '_blank')">@${channel.username}</div>
                     <div class="channel-subs">${parseSubscribers(channel.subscribers).toLocaleString()} subscribers</div>
                     <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.25rem;">${channel.ownership || 'Competitor Channel'}</div>
                 </div>
-                <button onclick="removeChannel('${channel.username}')" class="action-btn" style="z-index:2;">✕</button>
+                <button onclick="removeChannel(event, '${channel.username}')" class="action-btn" style="z-index:2;">✕</button>
             `;
             channelsGrid.appendChild(card);
+            liveUpdateObserver.observe(card); // Attach observer
         });
 
-        // Render Table View
         const table = channelsTableBody.closest('table');
         const thead = table.querySelector('thead tr');
         thead.innerHTML = ''; // Clear existing headers
-        columnOrder.forEach(colId => {
+
+        // Only get columns that are actually visible
+        const activeColumns = columnOrder.filter(colId => visibleColumns[colId]);
+
+        activeColumns.forEach(colId => {
             const th = document.createElement('th');
-            th.className = `${colId} ${visibleColumns[colId] ? '' : 'hidden'}`;
-            th.textContent = columnLabels[colId];
+            th.className = colId;
+            // Added cursor and sorting arrow
+            th.style.cursor = 'pointer';
+            let sortArrow = '';
+            if (sortBy === colId) {
+                sortArrow = sortDesc ? ' ▼' : ' ▲';
+            }
+            th.innerHTML = `${columnLabels[colId]}<span style="font-size: 0.8rem; opacity: 0.7;">${sortArrow}</span>`;
+
+            // Add click event for sorting
+            th.addEventListener('click', () => {
+                if (sortBy === colId) {
+                    sortDesc = !sortDesc; // Toggle if clicking same column
+                } else {
+                    sortBy = colId;
+                    sortDesc = true; // Default to descending for new column
+                }
+                localStorage.setItem('sortBy', sortBy);
+                localStorage.setItem('sortDesc', sortDesc);
+                renderChannels();
+            });
+
             thead.appendChild(th);
         });
 
         channelsTableBody.innerHTML = '';
         sortedChannels.forEach((channel, index) => {
             const row = document.createElement('tr');
+            row.dataset.username = channel.username; // For live fetch tracking
             // row.onclick removed to prevent whole-row clicking
 
 
@@ -497,19 +836,26 @@ if (window.location.pathname.includes('dashboard.html')) {
                 .map(opt => `<option value="${opt}" ${channel.ownership === opt ? 'selected' : ''}>${opt}</option>`).join('');
 
             const cells = {
-                'col-no': `<td class="col-no ${visibleColumns['col-no'] ? '' : 'hidden'}" style="font-weight:bold; color:var(--text-secondary);">#${channel.rank}</td>`,
-                'col-channel': `<td class="col-channel ${visibleColumns['col-channel'] ? '' : 'hidden'}"><div class="table-channel-info"><img src="${channel.avatar_url || channel.image_url || 'https://via.placeholder.com/40'}" class="table-channel-img" style="cursor:pointer;" onclick="window.open('https://t.me/${channel.username}', '_blank')"><span style="cursor:pointer;" onclick="window.open('https://t.me/${channel.username}', '_blank')">${channel.name}</span></div></td>`,
-                'col-status': `<td class="col-status ${visibleColumns['col-status'] ? '' : 'hidden'}"><span class="status-badge ${channel.status === 'Active' ? 'status-active' : 'status-inactive'}">${channel.status || 'Active'}</span></td>`,
-                'col-subs': `<td class="col-subs ${visibleColumns['col-subs'] ? '' : 'hidden'}" style="font-weight:600;">${parseSubscribers(channel.subscribers).toLocaleString()}</td>`,
-                'col-username': `<td class="col-username ${visibleColumns['col-username'] ? '' : 'hidden'}" style="cursor:pointer; color:var(--accent-color);" onclick="window.open('https://t.me/${channel.username}', '_blank')">@${channel.username}</td>`,
-                'col-ownership': `<td class="col-ownership ${visibleColumns['col-ownership'] ? '' : 'hidden'}"><select class="ownership-select" onchange="updateOwnership('${channel.username}', this.value)">${ownershipOptions}</select></td>`,
-                'col-added': `<td class="col-added ${visibleColumns['col-added'] ? '' : 'hidden'}">${formatDate(channel.added_on || channel.created_at)}</td>`,
-                'col-desc': `<td class="col-desc ${visibleColumns['col-desc'] ? '' : 'hidden'}" title="${channel.description || ''}">${channel.description || '-'}</td>`,
-                'col-action': `<td class="col-action ${visibleColumns['col-action'] ? '' : 'hidden'}"><button onclick="removeChannel('${channel.username}')" class="action-btn">Remove</button></td>`
+                'col-no': `<td class="col-no" style="font-weight:bold; color:var(--text-secondary);">#${channel.rank}</td>`,
+                'col-channel': (() => {
+                    const imageUrl = channel.avatar_url || channel.image_url;
+                    const finalImgSrc = imageUrl ? (imageUrl.startsWith('data:') ? imageUrl : `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`) : 'https://via.placeholder.com/40';
+                    return `<td class="col-channel"><div class="table-channel-info"><img src="${finalImgSrc}" class="table-channel-img"><span style="cursor:default;">${channel.name}</span></div></td>`;
+                })(),
+                'col-status': `<td class="col-status"><span class="status-badge ${channel.status === 'Active' ? 'status-active' : 'status-inactive'}">${channel.status || 'Active'}</span></td>`,
+                'col-subs': `<td class="col-subs" style="font-weight:600;">${parseSubscribers(channel.subscribers).toLocaleString()}</td>`,
+                'col-username': `<td class="col-username" style="cursor:pointer; color:var(--accent-color);" onclick="window.open('https://t.me/${channel.username}', '_blank')">@${channel.username}</td>`,
+                'col-ownership': `<td class="col-ownership"><select class="ownership-select" onchange="updateOwnership('${channel.username}', this.value)">${ownershipOptions}</select></td>`,
+                'col-added': `<td class="col-added">${formatDate(channel.added_on || channel.created_at)}</td>`,
+                'col-synced': `<td class="col-synced" style="font-size: 0.85rem; color: var(--text-secondary);">${formatDateTime(channel.last_synced_at)}</td>`,
+                'col-desc': `<td class="col-desc" title="${channel.description || ''}">${channel.description || '-'}</td>`,
+                'col-action': `<td class="col-action" style="white-space: nowrap;"><button onclick="openEditModal('${channel.username}')" class="secondary-btn" style="padding: 0.25rem 0.6rem; font-size: 0.8rem; background: var(--border-color); color: var(--text-color); border: none;">Edit</button></td>`,
+                'col-delete': `<td class="col-delete" style="white-space: nowrap;"><button onclick="removeChannel(event, '${channel.username}')" class="action-btn">Remove</button></td>`
             };
 
-            row.innerHTML = columnOrder.map(colId => cells[colId]).join('');
+            row.innerHTML = activeColumns.map(colId => cells[colId]).join('');
             channelsTableBody.appendChild(row);
+            liveUpdateObserver.observe(row); // Attach observer
         });
     }
 
@@ -539,47 +885,80 @@ if (window.location.pathname.includes('dashboard.html')) {
         }).join('');
     }
 
-    function renderAnalytics() {
-        if (!analyticsTableBody) return;
-        const matrixHeader = document.getElementById('analyticsTableHeader');
-        const matrixBody = document.getElementById('analyticsTableBody');
+    function renderAnalyticsTable(targetHeader, targetBody, countEl, channelCountEl = null, searchQuery = '') {
+        if (!targetBody) return;
+        targetHeader.innerHTML = '';
+        targetBody.innerHTML = '';
 
-        matrixHeader.innerHTML = '';
-        matrixBody.innerHTML = '';
+        const query = (searchQuery || '').toLowerCase().trim();
 
         if (analyticsHistory.length === 0) {
-            matrixBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 1rem;">No history recorded yet.</td></tr>';
-            if (analyticsCountEl) analyticsCountEl.textContent = '0';
-            if (document.getElementById('analyticsChannelCount')) document.getElementById('analyticsChannelCount').textContent = '0';
+            targetBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 1rem;">No history recorded yet.</td></tr>';
+            if (countEl) countEl.textContent = '0';
+            if (channelCountEl) channelCountEl.textContent = '0';
             return;
         }
 
-        if (analyticsCountEl) analyticsCountEl.textContent = analyticsHistory.length;
+        // 1. Identify all unique channels 
+        const channelMap = new Map(); // username -> metadata
 
-        // 1. Identify all unique channels (Union of all snapshots)
-        const channelMap = new Map(); // username -> Name
+        // First, add all CURRENT channels from the master list
+        channels.forEach(c => {
+            if (c.username) {
+                channelMap.set(c.username, {
+                    name: c.name,
+                    ownership: c.ownership || 'Competitor Channel',
+                    subscribers: parseSubscribers(c.subscribers)
+                });
+            }
+        });
+
+        // Then, add legacy channels from history (in case they were deleted from DB)
         analyticsHistory.forEach(record => {
             if (Array.isArray(record.details)) {
                 record.details.forEach(c => {
                     if (c.username && !channelMap.has(c.username)) {
-                        channelMap.set(c.username, c.name);
+                        channelMap.set(c.username, {
+                            name: c.name,
+                            ownership: 'Competitor Channel', // Default legacy
+                            subscribers: parseSubscribers(c.subscribers)
+                        });
                     }
                 });
             }
         });
 
         // Update total channel count
-        if (document.getElementById('analyticsChannelCount')) {
-            document.getElementById('analyticsChannelCount').textContent = channelMap.size;
-        }
+        if (channelCountEl) channelCountEl.textContent = channelMap.size;
 
-        // Sort channel keys for consistent column order (e.g., by Name)
-        const sortedChannelKeys = Array.from(channelMap.keys()).sort((a, b) => {
-            return channelMap.get(a).localeCompare(channelMap.get(b));
+        const ownershipPriority = {
+            'Our Channel': 1,
+            'Our Relative Channel': 2,
+            'Competitor Channel': 3
+        };
+
+        // Sort channel keys by Ownership Priority, then by Subscribers (High to Low)
+        let sortedChannelKeys = Array.from(channelMap.keys()).sort((a, b) => {
+            const infoA = channelMap.get(a);
+            const infoB = channelMap.get(b);
+
+            const pA = ownershipPriority[infoA.ownership] || 99;
+            const pB = ownershipPriority[infoB.ownership] || 99;
+
+            if (pA !== pB) return pA - pB;
+            return infoB.subscribers - infoA.subscribers; // Descending
         });
 
+        // If searching, we might want to hide columns that don't match? 
+        // Or if searching, only show rows that match the date?
+        // Let's filter ROWS based on date/time OR matching values.
+
+        // Removed row filtering based on search query for jump-to-column behavior
+        const filteredHistory = analyticsHistory;
+
+        if (countEl) countEl.textContent = filteredHistory.length;
+
         // 2. Build Header Row
-        // Static columns: Date, Day, Time
         let headerHTML = `
             <tr>
                 <th style="min-width: 120px; position: sticky; left: 0; z-index: 10; background: var(--glass-bg);">Date</th>
@@ -588,80 +967,62 @@ if (window.location.pathname.includes('dashboard.html')) {
         `;
 
         sortedChannelKeys.forEach(username => {
-            const name = channelMap.get(username);
-            // Header cell for each channel
-            // We can add a link or tooltip if needed
-            headerHTML += `<th style="min-width: 150px; text-align: center;" title="@${username}">
-                <div style="font-size: 0.9rem; line-height: 1.2;">${name}</div>
+            const info = channelMap.get(username);
+            headerHTML += `<th style="min-width: 150px; text-align: center;" title="@${username}" data-username="${username}">
+                <div class="channel-name" style="font-size: 0.9rem; line-height: 1.2;">${info.name}</div>
                 <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.8;">@${username}</div>
             </th>`;
         });
         headerHTML += '</tr>';
-        matrixHeader.innerHTML = headerHTML;
+        targetHeader.innerHTML = headerHTML;
 
-        // 3. Build Data Rows
-        analyticsHistory.forEach(record => {
-            const dateObj = new Date(record.timestamp);
-            const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); // 26-Dec-2025
-            const dayStr = dateObj.toLocaleDateString('en-US', { weekday: 'long' }); // Friday
-            const timeStr = dateObj.toLocaleTimeString('en-US', { hour12: false }); // 20:00:25
+        // 3. Build Data Rows (No filtering by search query as per user request for "jump" behavior)
+        filteredHistory.forEach(record => {
+            const dateObj = new Date(record.created_at || record.timestamp);
+            const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+            const dayStr = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+            const timeStr = dateObj.toLocaleTimeString('en-US', { hour12: false });
 
-            // Create a quick lookup for this snapshot
             const snapshotData = {};
             if (Array.isArray(record.details)) {
                 record.details.forEach(c => {
-                    // Use username as key for consistency
-                    if (c.username) {
-                        snapshotData[c.username] = c.subscribers;
-                    }
+                    if (c.username) snapshotData[c.username] = c.subscribers;
                 });
             }
 
             let rowHTML = `
                 <tr>
-                    <td style="position: sticky; left: 0; background: inherit; z-index: 5; font-weight: 500;">${dateStr}</td>
-                    <td>${dayStr}</td>
-                    <td>${timeStr}</td>
+                    <td style="position: sticky; left: 0; background: var(--glass-bg); z-index: 5; font-weight: 600; color: var(--accent-color);">${dateStr}</td>
+                    <td style="color: var(--text-secondary);">${dayStr}</td>
+                    <td style="font-family: monospace; font-weight: bold;">${timeStr}</td>
             `;
 
             sortedChannelKeys.forEach(username => {
                 const rawSubs = snapshotData[username];
-                // Check if we have data for this channel in this snapshot
                 let cellContent = '-';
                 if (rawSubs !== undefined) {
-                    // Start: Cell Diff calculation (Optional enhancement for later, just showing value now as per req)
-                    // We can match exact format from Google Sheet (Active Value)
-                    // If rawSubs is a string like "2.1k subscribers", parse it for display or just show raw? 
-                    // User's sheet shows integers. Let's parse it to int for cleaner look.
                     const val = parseSubscribers(rawSubs);
                     cellContent = val.toLocaleString();
                 }
-                rowHTML += `<td style="text-align: center;">${cellContent}</td>`;
+                rowHTML += `<td style="text-align: center; font-weight: 500;">${cellContent}</td>`;
             });
 
             rowHTML += '</tr>';
-            matrixBody.innerHTML += rowHTML;
+            targetBody.innerHTML += rowHTML;
         });
     }
 
-    // Connect Analytics Buttons
-    if (forceRecordBtn) {
-        forceRecordBtn.addEventListener('click', async () => {
-            if (!confirm('Have you "Fetched" the latest data first?\n\nClick OK to record snapshot of CURRENT database state.')) return;
-            try {
-                const res = await fetch(`${API_URL}/analytics`, { method: 'POST' });
-                const result = await res.json();
-                if (result.success) {
-                    showToast('Snapshot recorded.');
-                    loadAnalytics();
-                } else {
-                    showToast('Failed to record snapshot.', 'error');
-                }
-            } catch (err) {
-                showToast('Network error recording snapshot.', 'error');
-            }
-        });
+
+    function renderTrackerTable() {
+        renderAnalyticsTable(
+            document.getElementById('trackerTableHeader'),
+            document.getElementById('trackerTableBody'),
+            document.getElementById('analyticsCount'),
+            document.getElementById('analyticsChannelCount')
+        );
     }
+
+    // Connect Analytics Buttons
 
     if (clearAnalyticsBtn) {
         clearAnalyticsBtn.addEventListener('click', async () => {
@@ -673,6 +1034,7 @@ if (window.location.pathname.includes('dashboard.html')) {
                     showToast('History cleared.');
                     analyticsHistory = [];
                     renderAnalytics();
+                    renderTrackerTable();
                 } else {
                     showToast('Failed to clear history.', 'error');
                 }
@@ -680,6 +1042,68 @@ if (window.location.pathname.includes('dashboard.html')) {
                 showToast('Network error clearing history.', 'error');
             }
         });
+    }
+
+    // Unified Snapshot Trigger
+    if (toggleAutoSaveBtn) {
+        toggleAutoSaveBtn.addEventListener('click', async () => {
+            toggleAutoSaveBtn.disabled = true;
+            toggleAutoSaveBtn.innerHTML = '<span>Processing...</span>';
+
+            try {
+                const res = await fetch(`${API_URL}/analytics`, { method: 'POST' });
+                const result = await res.json();
+                if (result.success) {
+                    showToast('Snapshot recorded successfully.');
+                    await loadAnalytics();
+                } else {
+                    showToast('Failed to record snapshot.', 'error');
+                }
+            } catch (err) {
+                showToast('Network error recording snapshot.', 'error');
+            } finally {
+                toggleAutoSaveBtn.disabled = false;
+                toggleAutoSaveBtn.innerHTML = '<span>Record Now</span>';
+            }
+        });
+    }
+
+    function jumpToColumn(query, tableId) {
+        if (!query) return;
+        const normalizedQuery = query.toLowerCase().trim();
+        const table = document.getElementById(tableId);
+        if (!table) return;
+
+        const headers = table.querySelectorAll('th[data-username]');
+        for (const th of headers) {
+            const name = th.querySelector('.channel-name')?.textContent.toLowerCase() || '';
+            const username = th.dataset.username.toLowerCase();
+            if (name.includes(normalizedQuery) || username.includes(normalizedQuery)) {
+                th.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                // Subtle highlight
+                th.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                setTimeout(() => th.style.backgroundColor = '', 1500);
+                break;
+            }
+        }
+    }
+
+    if (trackerSearchInput) {
+        trackerSearchInput.addEventListener('input', (e) => {
+            jumpToColumn(e.target.value, 'trackerTable');
+        });
+    }
+
+    const analyticsSearchInput = document.getElementById('analyticsSearchInput');
+    if (analyticsSearchInput) {
+        analyticsSearchInput.addEventListener('input', (e) => {
+            jumpToColumn(e.target.value, 'analyticsTable');
+        });
+    }
+
+
+    if (toggleAutoSaveBtn) {
+        toggleAutoSaveBtn.innerHTML = '<span>Trigger Snapshot Now</span>';
     }
 
     // --- Initial Load ---

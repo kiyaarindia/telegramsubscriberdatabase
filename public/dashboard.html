@@ -32,13 +32,12 @@
                     </svg>
                     <span>Channels Database</span>
                 </button>
-                <button id="navAnalytics" class="nav-item">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="20" x2="18" y2="10"></line>
-                        <line x1="12" y1="20" x2="12" y2="4"></line>
-                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                <button id="navAutoSave" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                     </svg>
-                    <span>Analytics</span>
+                    <span>Sync History</span>
                 </button>
             </nav>
             <div class="sidebar-footer">
@@ -89,19 +88,74 @@
                 <header class="header">
                     <div class="header-left">
                         <h1>Channels Database</h1>
-                        <div class="total-count">Total Channels: <span id="totalCount">0</span></div>
+                        <div class="total-count"
+                            style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                            <span>Total Channels: <span id="totalCount"
+                                    style="color: var(--text-primary); font-weight: 600;">0</span></span>
+                            <span style="display: flex; align-items: center; gap: 0.3rem;">
+                                <span class="status-badge status-active"
+                                    style="padding: 0.15rem 0.4rem; font-size: 0.7rem;">Active</span>
+                                <span id="activeCount" style="color: var(--text-primary); font-weight: 600;">0</span>
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 0.3rem;">
+                                <span class="status-badge status-inactive"
+                                    style="padding: 0.15rem 0.4rem; font-size: 0.7rem;">Inactive</span>
+                                <span id="inactiveCount" style="color: var(--text-primary); font-weight: 600;">0</span>
+                            </span>
+                            <span
+                                style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.8rem; color: var(--accent-color); display: flex; align-items: center; gap: 0.4rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                </svg>
+                                Next Update: <span id="countdownTimer"
+                                    style="font-family: monospace; font-weight: bold; min-width: 45px;">--:--</span>
+                            </span>
+                        </div>
                     </div>
                     <div class="header-controls">
                         <button id="openAddChannelModalBtn" class="primary-btn">
                             <span>+ Add Channels</span>
                         </button>
+                        <button id="clearAllChannelsBtn" class="secondary-btn"
+                            style="color: var(--error-color); border-color: var(--error-color);">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M3 6h18"></path>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                            <span>Clear All</span>
+                        </button>
 
                         <button id="refreshDataBtn" class="secondary-btn" title="Fetch Live Data">
+                            <div class="refresh-interval-container"
+                                style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem;">
+                                <label for="refreshIntervalSelect"
+                                    style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;">Auto-refresh:</label>
+                                <select id="refreshIntervalSelect" class="secondary-btn"
+                                    style="padding: 0.5rem; background: rgba(30, 41, 59, 0.8); color: var(--text-primary); outline: none; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.1);">
+                                    <option value="30000">30 s</option>
+                                    <option value="60000">1 min</option>
+                                    <option value="300000">5 min</option>
+                                    <option value="600000">10 min</option>
+                                    <option value="1800000">30 min</option>
+                                    <option value="3600000">1 hour</option>
+                                    <option value="10800000">3 hour</option>
+                                    <option value="21600000">6 hour</option>
+                                    <option value="43200000">12 hour</option>
+                                    <option value="86400000">1 day</option>
+                                </select>
+                            </div>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2">
                                 <path d="M23 4v6h-6"></path>
                                 <path d="M1 20v-6h6"></path>
-                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15">
+                                </path>
                             </svg>
                             <span>Fetch</span>
                         </button>
@@ -110,14 +164,6 @@
                             <input type="text" id="searchInput" placeholder="Search channels..." class="search-input"
                                 autocomplete="off">
                         </div>
-
-                        <select id="sortSelect" class="sort-select">
-                            <option value="name-asc">Name (A-Z)</option>
-                            <option value="name-desc">Name (Z-A)</option>
-                            <option value="subs-desc">Subscribers (High-Low)</option>
-                            <option value="subs-asc">Subscribers (Low-High)</option>
-                            <option value="status">Status (Active First)</option>
-                        </select>
 
                         <div class="view-toggle">
                             <button id="cardViewBtn" class="toggle-btn active" title="Card View">
@@ -155,20 +201,29 @@
                                     <div class="column-option"><input type="checkbox" id="col-channel" checked disabled>
                                         <label for="col-channel">Channel</label>
                                     </div>
-                                    <div class="column-option"><input type="checkbox" id="col-status" checked> <label
-                                            for="col-status">Status</label></div>
+                                    <div class="column-option"><input type="checkbox" id="col-status" checked>
+                                        <label for="col-status">Status</label>
+                                    </div>
                                     <div class="column-option"><input type="checkbox" id="col-subs" checked> <label
                                             for="col-subs">Subscribers</label></div>
-                                    <div class="column-option"><input type="checkbox" id="col-username" checked> <label
-                                            for="col-username">Username</label></div>
-                                    <div class="column-option"><input type="checkbox" id="col-ownership" checked> <label
-                                            for="col-ownership">Ownership</label></div>
+                                    <div class="column-option"><input type="checkbox" id="col-username" checked>
+                                        <label for="col-username">Username</label>
+                                    </div>
+                                    <div class="column-option"><input type="checkbox" id="col-ownership" checked>
+                                        <label for="col-ownership">Ownership</label>
+                                    </div>
                                     <div class="column-option"><input type="checkbox" id="col-added" checked> <label
                                             for="col-added">Added On</label></div>
+                                    <div class="column-option"><input type="checkbox" id="col-synced" checked> <label
+                                            for="col-synced">Last Sync</label></div>
                                     <div class="column-option"><input type="checkbox" id="col-desc"> <label
                                             for="col-desc">Description</label></div>
-                                    <div class="column-option"><input type="checkbox" id="col-action" checked> <label
-                                            for="col-action">Action</label></div>
+                                    <div class="column-option"><input type="checkbox" id="col-action" checked>
+                                        <label for="col-action">Edit</label>
+                                    </div>
+                                    <div class="column-option"><input type="checkbox" id="col-delete" checked>
+                                        <label for="col-delete">Delete</label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -190,6 +245,7 @@
                                 <th class="col-ownership">Ownership</th>
                                 <th class="col-status">Status</th>
                                 <th class="col-added">Added On</th>
+                                <th class="col-synced">Last Sync</th>
                                 <th class="col-desc hidden">Description</th>
                                 <th class="col-action">Action</th>
                             </tr>
@@ -201,37 +257,45 @@
                 </div>
             </div>
 
-            <!-- Analytics View -->
-            <div id="viewAnalytics" class="view-section hidden">
-                <header class="header">
-                    <div class="header-left">
-                        <h1>Hourly Analytics</h1>
-                        <div class="total-count">History Records: <span id="analyticsCount">0</span> | Channels: <span
-                                id="analyticsChannelCount">0</span></div>
+
+            <!-- Auto Tracker View -->
+            <div id="viewAutoSave" class="view-section hidden">
+                <div class="view-header">
+                    <div>
+                        <h1>Sync History</h1>
+                        <p>Historical snapshots showing subscriber counts for all channels</p>
                     </div>
-                    <div class="header-controls">
-                        <div class="search-container">
-                            <input type="text" id="analyticsSearchInput" placeholder="Search column..."
-                                class="search-input" autocomplete="off">
+                    <div class="header-actions">
+                        <div class="search-box">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input type="text" id="trackerSearchInput" placeholder="Jump to channel...">
                         </div>
-                        <button id="forceRecordBtn" class="primary-btn">
-                            <span>Record Snapshot Now</span>
+                        <button id="toggleAutoSaveBtn" class="primary-btn">
+                            <span>Record Now</span>
                         </button>
                         <button id="clearAnalyticsBtn" class="secondary-btn"
                             style="color: var(--error-color); border-color: var(--error-color);">
                             <span>Clear History</span>
                         </button>
                     </div>
-                </header>
+                </div>
+                <div id="trackerCountContainer"
+                    style="font-size: 0.85rem; color: var(--text-secondary); margin: 0.5rem 0 1rem 0;">
+                    Records: <span id="analyticsCount">0</span> | Channels: <span id="analyticsChannelCount">0</span>
+                </div>
 
                 <div class="analytics-container">
-                    <div id="analyticsTableWrapper" class="analytics-table-wrapper">
-                        <table class="channels-table analytics-matrix">
-                            <thead id="analyticsTableHeader">
+                    <div class="analytics-table-wrapper">
+                        <table id="trackerTable" class="channels-table analytics-matrix">
+                            <thead id="trackerTableHeader">
                                 <!-- Dynamic header will be added here -->
                             </thead>
-                            <tbody id="analyticsTableBody">
-                                <!-- Analytics rows -->
+                            <tbody id="trackerTableBody">
+                                <!-- Tracker rows -->
                             </tbody>
                         </table>
                     </div>
@@ -253,6 +317,41 @@ telegram
 https://t.me/durov
 bloomberg" rows="6"></textarea>
                     <button id="addChannelBtn">Add Channels</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Channel Modal -->
+        <div id="editChannelModal" class="modal hidden">
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h2>Edit Channel Details</h2>
+                    <button id="closeEditChannelModalBtn" class="close-modal-btn">✕</button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editChannelOriginalUsername">
+
+                    <div class="input-group" style="margin-bottom: 1.25rem;">
+                        <label for="editChannelUsername"
+                            style="display:block; margin-bottom: 0.5rem; color:var(--text-secondary); font-size: 0.9rem;">Telegram
+                            Link</label>
+                        <input type="text" id="editChannelUsername"
+                            style="width: 100%; border: 1px solid var(--accent-color); background: rgba(15, 23, 42, 0.6); padding: 0.75rem; border-radius: 8px; color: var(--text-primary); outline: none; transition: border-color 0.2s;"
+                            placeholder="Channel username">
+                    </div>
+
+                    <div class="input-group" style="margin-bottom: 1.5rem;">
+                        <label for="editChannelName"
+                            style="display:block; margin-bottom: 0.5rem; color:var(--text-secondary); font-size: 0.9rem;">Name</label>
+                        <input type="text" id="editChannelName"
+                            style="width: 100%; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(15, 23, 42, 0.6); padding: 0.75rem; border-radius: 8px; color: var(--text-primary); outline: none; transition: border-color 0.2s;"
+                            placeholder="Custom name" onfocus="this.style.borderColor='var(--accent-color)'"
+                            onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'">
+                    </div>
+
+                    <button id="saveEditChannelBtn" class="primary-btn"
+                        style="width: 100%; justify-content: center; padding: 0.8rem; font-size: 1rem;">Save
+                        Changes</button>
                 </div>
             </div>
         </div>
